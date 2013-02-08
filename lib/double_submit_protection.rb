@@ -12,7 +12,7 @@ module DoubleSubmitProtection
         begin
           key = DoubleSubmitProtection.token_key(id, token_name)
           value = token_value()
-          flash[key] = value
+          DoubleSubmitProtection::Config.token_store.write(key, value)
           value
         end
       { key => @double_submit_token_hash[key] }
@@ -33,7 +33,7 @@ module DoubleSubmitProtection
   module Controller
     def double_submit?(id, token_name=nil)
       key = DoubleSubmitProtection.token_key(id, token_name)
-      token = flash[key]
+      token = DoubleSubmitProtection::Config.token_store.delete(key)
       token.nil? || (token != params[key])
     end
   end
@@ -41,6 +41,39 @@ module DoubleSubmitProtection
   def self.token_key(id, name=nil)
     name &&= "_#{name}"
     "#{DEFAULT_TOKEN_NAME}#{name}:#{id}"
+  end
+
+  # DoubleSubmitProtection::Config.setup do
+  #   write_method do |key, value|
+  #     Rails.cache.write(key, value)
+  #   end
+  #   delete_method do |key|
+  #     Rails.cache.read(key).tap do
+  #       Rails.cache.write(key, nil)
+  #     end
+  #   end
+  # end
+
+  class Config
+    class << self
+      attr_reader :token_store
+
+      def setup(&block)
+        @token_store = self.new.tap do |e|
+          e.instance_eval(&block)
+        end
+      end
+    end
+
+    private
+
+    def write_method(&block)
+      define_singleton_method :write, &block
+    end
+
+    def delete_method(&block)
+      define_singleton_method :delete, &block
+    end
   end
 
 end
